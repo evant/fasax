@@ -7,7 +7,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import me.tatarka.fasax.Element;
@@ -27,7 +29,7 @@ public class TestElementList {
     }
 
     @Test
-    public void testConcreteElementList() throws Exception {
+    public void testConcrete() throws Exception {
         String xml = Joiner.on("\n").join(
                 "<root>",
                 "  <list>",
@@ -45,7 +47,7 @@ public class TestElementList {
     }
 
     @Test
-    public void testAbstractElementList() throws Exception {
+    public void testAbstract() throws Exception {
         String xml = Joiner.on("\n").join(
                 "<root>",
                 "  <list>",
@@ -63,7 +65,7 @@ public class TestElementList {
     }
 
     @Test
-    public void testDuplicateElementList() throws Exception {
+    public void testDuplicate() throws Exception {
         String xml = Joiner.on("\n").join(
                 "<root>",
                 "  <item>value</item>",
@@ -83,7 +85,7 @@ public class TestElementList {
     }
 
     @Test
-    public void testNestedElementList() throws Exception {
+    public void testNested() throws Exception {
         String xml = Joiner.on("\n").join(
                 "<root>",
                 "  <list>",
@@ -93,6 +95,76 @@ public class TestElementList {
                 "</root>"
         );
         NestedElementList root = fasax.fromXml(xml, NestedElementList.class);
+
+        assertThat(root).isNotNull();
+        assertThat(root.list).isNotNull();
+        assertThat(root.list.get(0)).isNotNull();
+        assertThat(root.list.get(0).item).isEqualTo("value1");
+        assertThat(root.list.get(1)).isNotNull();
+        assertThat(root.list.get(1).item).isEqualTo("value2");
+    }
+
+    @Test
+    public void testCustomType() throws Exception {
+        String xml = Joiner.on("\n").join(
+                "<root>",
+                "  <list>",
+                "    <date>2014-01-01</date>",
+                "    <date>2014-01-02</date>",
+                "  </list>",
+                "</root>"
+        );
+        CustomTypeElementList root = fasax.fromXml(xml, CustomTypeElementList.class);
+        SimpleDateFormat dateParser = new SimpleDateFormat("yyyy-mm-dd");
+
+        assertThat(root).isNotNull();
+        assertThat(root.list).isNotNull();
+        assertThat(root.list.get(0)).isEqualTo(dateParser.parse("2014-01-01"));
+        assertThat(root.list.get(1)).isEqualTo(dateParser.parse("2014-01-02"));
+    }
+
+    @Test
+    public void testInline() throws Exception {
+        String xml = Joiner.on("\n").join(
+                "<root>",
+                "  <item>value1</item>",
+                "  <item>value2</item>",
+                "</root>"
+        );
+        InlineElementList root = fasax.fromXml(xml, InlineElementList.class);
+
+        assertThat(root).isNotNull();
+        assertThat(root.list).isNotNull();
+        assertThat(root.list.get(0)).isEqualTo("value1");
+        assertThat(root.list.get(1)).isEqualTo("value2");
+    }
+
+    @Test
+    public void testInlineCustomType() throws Exception {
+        String xml = Joiner.on("\n").join(
+                "<root>",
+                "  <date>2014-01-01</date>",
+                "  <date>2014-01-02</date>",
+                "</root>"
+        );
+        InlineCustomTypeElementList root = fasax.fromXml(xml, InlineCustomTypeElementList.class);
+        SimpleDateFormat dateParser = new SimpleDateFormat("yyyy-mm-dd");
+
+        assertThat(root).isNotNull();
+        assertThat(root.list).isNotNull();
+        assertThat(root.list.get(0)).isEqualTo(dateParser.parse("2014-01-01"));
+        assertThat(root.list.get(1)).isEqualTo(dateParser.parse("2014-01-02"));
+    }
+
+    @Test
+    public void testInlineNested() throws Exception {
+        String xml = Joiner.on("\n").join(
+                "<root>",
+                "  <child><item>value1</item></child>",
+                "  <child><item>value2</item></child>",
+                "</root>"
+        );
+        NestedInlineElementList root = fasax.fromXml(xml, NestedInlineElementList.class);
 
         assertThat(root).isNotNull();
         assertThat(root.list).isNotNull();
@@ -124,7 +196,7 @@ public class TestElementList {
 
     @Xml(name = "root")
     public static class NestedElementList {
-        @ElementList(entry = "item")
+        @ElementList(entry = "child")
         public List<NestedElement> list;
     }
 
@@ -132,5 +204,29 @@ public class TestElementList {
     public static class NestedElement {
         @Element
         public String item;
+    }
+
+    @Xml(name = "root")
+    public static class CustomTypeElementList {
+        @ElementList(entry = "date", type = TestFasax.DateTypeConverter.class)
+        public List<Date> list;
+    }
+
+    @Xml(name = "root")
+    public static class InlineElementList {
+        @ElementList(entry = "item", inline = true)
+        public List<String> list;
+    }
+
+    @Xml(name = "root")
+    public static class InlineCustomTypeElementList {
+        @ElementList(entry = "date", inline = true, type = TestFasax.DateTypeConverter.class)
+        public List<Date> list;
+    }
+
+    @Xml(name = "root")
+    public static class NestedInlineElementList {
+        @ElementList(entry = "child", inline = true)
+        public List<NestedElement> list;
     }
 }

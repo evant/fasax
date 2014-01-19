@@ -142,13 +142,22 @@ public final class FasaxModelProcessor extends AbstractProcessor {
             if (elementList != null) {
                 String name = getName(elementList.name(), fieldName);
                 String entry = elementList.entry();
+                boolean inline = elementList.inline();
                 String typeConverter = getType(elementList);
                 CollectionType listType = new CollectionType(field.asType());
                 if (typeConverter != null) {
                     saxGenerator.addTypeConverter(fieldName, typeConverter);
-                    saxGenerator.addElementList(fieldName, name, entry, listType.type, listType.entryType);
+                    if (inline) {
+                        saxGenerator.addInlineList(fieldName, name, entry, listType.type, listType.entryType);
+                    } else {
+                        saxGenerator.addElementList(fieldName, name, entry, listType.type, listType.entryType);
+                    }
                 } else if (saxGenerator.isPrimitive(listType.entryType)) {
-                    saxGenerator.addElementList(fieldName, name, entry, listType.type, listType.entryType);
+                    if (inline) {
+                        saxGenerator.addInlineList(fieldName, name, entry, listType.type, listType.entryType);
+                    } else {
+                        saxGenerator.addElementList(fieldName, name, entry, listType.type, listType.entryType);
+                    }
                 } else {
                     saxGenerator.addListChild(fieldName, name, entry, getPackageName(field), listType.type, listType.entryType);
                 }

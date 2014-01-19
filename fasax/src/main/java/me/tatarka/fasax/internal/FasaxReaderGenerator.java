@@ -25,7 +25,6 @@ import java.util.Map;
 
 import static com.sun.codemodel.JConditionalFix._if;
 import static com.sun.codemodel.JExpr._new;
-import static com.sun.codemodel.JExpr._null;
 import static com.sun.codemodel.JExpr._super;
 import static com.sun.codemodel.JExpr.invoke;
 import static com.sun.codemodel.JExpr.lit;
@@ -48,6 +47,7 @@ public final class FasaxReaderGenerator {
     private final List<Node> attributes = new ArrayList<Node>();
     private final List<ChildNode> children = new ArrayList<ChildNode>();
     private final List<ListNode> elementLists = new ArrayList<ListNode>();
+    private final List<ListNode> inlineList = new ArrayList<ListNode>();
     private final List<ListChildNode> listChildren = new ArrayList<ListChildNode>();
     private final List<TypeConverter> primitiveTypeConverters = new ArrayList<TypeConverter>();
     private final Map<String, CustomTypeConverter> customTypeConverters = new LinkedHashMap<String, CustomTypeConverter>();
@@ -83,6 +83,10 @@ public final class FasaxReaderGenerator {
         elementLists.add(new ListNode(field, name, type, entry, entryType));
     }
 
+    void addInlineList(String field, String name, String entry, String type, String entryType) {
+        inlineList.add(new ListNode(field, name, type, entry, entryType));
+    }
+
     void addListChild(String field, String name, String entry, String classPackage, String listType, String entryType) {
         listChildren.add(new ListChildNode(field, name, listType, entry, entryType, getParserClassName(classPackage, entryType)));
     }
@@ -105,10 +109,11 @@ public final class FasaxReaderGenerator {
 
             JClass className = m.ref(this.className);
             JDefinedClass clazz = pkg._class(PUBLIC, parserClassName)._extends(m.ref(FasaxHandler.class).narrow(className));
+
             emitStates(clazz);
             emitTypeConverters(clazz, m);
             emitChildren(clazz, m);
-            emitStartDocument(clazz, className);
+            emitStartDocument(clazz, m);
             emitStartElement(clazz, m);
             emitEndElement(clazz);
             emitCharacters(clazz);
@@ -149,7 +154,7 @@ public final class FasaxReaderGenerator {
         }
     }
 
-    private void emitStartDocument(JDefinedClass clazz, JClass className) {
+    private void emitStartDocument(JDefinedClass clazz, JCodeModel m) {
         JMethod method = clazz.method(PUBLIC, void.class, "startDocument")._throws(SAXException.class);
         method.annotate(Override.class);
         JBlock body = method.body();
@@ -159,10 +164,14 @@ public final class FasaxReaderGenerator {
             body.assign(ref("rootName"), lit(rootName));
         }
 
-        body.assign(ref("result"), _new(className));
+        body.assign(ref("result"), _new(m.ref(className)));
+
+        for (ListNode el : inlineList) {
+            body.assign(ref("result").ref(el.field), _new(m.ref(el.listType).narrow(m.ref(el.type))));
+        }
 
         for (Node c : children) {
-            body.add(ref(c.field).invoke("startDocument"));
+            body.invoke(ref(c.field), "startDocument");
         }
     }
 
@@ -247,7 +256,7 @@ public final class FasaxReaderGenerator {
 
         if (children.isEmpty() && elementLists.isEmpty() && listChildren.isEmpty()) {
             emitElements(body, qName);
-            body.assign(ref("characters"), _null());
+            body.invoke(ref("characters"), "setLength").arg(lit(0));
         } else {
             JConditionalFix _if = null;
             for (Node c : children) {
@@ -265,14 +274,14 @@ public final class FasaxReaderGenerator {
             for (ListNode el : listChildren) {
                 JExpression test = lit(el.name).invoke("equals").arg(qName);
                 JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then() .assign(ref("state"), ref("ROOT"));
+                cond._then().assign(ref("state"), ref("ROOT"));
             }
             if (_if != null) body.add(_if);
 
             JSwitch _switch = body._switch(ref("state"));
             JBlock rootBody = _switch._case(ref("ROOT")).body();
             emitElements(rootBody, qName);
-            rootBody.assign(ref("characters"), _null());
+            body.invoke(ref("characters"), "setLength").arg(lit(0));
             rootBody._break();
 
             for (Node c : children) {
@@ -285,7 +294,7 @@ public final class FasaxReaderGenerator {
                 _case._if(lit(el.entry).invoke("equals").arg(qName))
                         ._then().invoke(ref("result").ref(el.field), "add")
                         .arg(emitConverter(el, ref("characters").invoke("toString")));
-                _case.assign(ref("characters"), _null());
+                body.invoke(ref("characters"), "setLength").arg(lit(0));
                 _case._break();
             }
             for (ListNode el : listChildren) {
@@ -300,18 +309,22 @@ public final class FasaxReaderGenerator {
     }
 
     private void emitElements(JBlock body, JVar qName) {
-        if (!elements.isEmpty()) {
-            JConditionalFix _if = null;
-            for (Node e : elements) {
-                JExpression test = lit(e.name).invoke("equals").arg(qName);
-                JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then().assign(
-                            ref("result").ref(e.field),
-                            emitConverter(e, ref("characters").invoke("toString"))
-                    );
-            }
-            body.add(_if);
+        JConditionalFix _if = null;
+        for (Node e : elements) {
+            JExpression test = lit(e.name).invoke("equals").arg(qName);
+            JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
+            cond._then().assign(
+                    ref("result").ref(e.field),
+                    emitConverter(e, ref("characters").invoke("toString"))
+            );
         }
+        for (ListNode el : inlineList) {
+            JExpression test = lit(el.entry).invoke("equals").arg(qName);
+            JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
+            cond._then().invoke(ref("result").ref(el.field), "add")
+                    .arg(emitConverter(el, ref("characters").invoke("toString")));
+        }
+        if (_if != null) body.add(_if);
     }
 
     private void emitCharacters(JDefinedClass clazz) {
@@ -344,7 +357,8 @@ public final class FasaxReaderGenerator {
 
     private JExpression emitConverter(Node e, JExpression expr) {
         TypeConverter typeConverter = findTypeConverter(e.field, e.type);
-        if (typeConverter == null) throw new RuntimeException("Don't know how to convert \"" + e.field + "\" to type \"" + e.type + "\"");
+        if (typeConverter == null)
+            throw new RuntimeException("Don't know how to convert \"" + e.field + "\" to type \"" + e.type + "\"");
         return typeConverter.emitConverter(expr);
     }
 
@@ -408,6 +422,7 @@ public final class FasaxReaderGenerator {
 
     private static class ListChildNode extends ListNode {
         final String childType;
+
         ListChildNode(String field, String name, String listType, String entry, String entryType, String childType) {
             super(field, name, listType, entry, entryType);
             this.childType = childType;
@@ -416,6 +431,7 @@ public final class FasaxReaderGenerator {
 
     private interface TypeConverter {
         boolean matches(String type);
+
         JExpression emitConverter(JExpression expr);
     }
 
@@ -435,7 +451,7 @@ public final class FasaxReaderGenerator {
 
         @Override
         public JExpression emitConverter(JExpression expr) {
-            return ref(name).invoke("convert").arg(expr);
+            return ref(name).invoke("convert").arg(invoke("toString").arg(expr));
         }
     }
 

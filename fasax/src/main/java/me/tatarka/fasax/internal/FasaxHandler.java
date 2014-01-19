@@ -9,7 +9,7 @@ import java.util.Locale;
 public abstract class FasaxHandler<T> extends DefaultHandler {
     protected static final int ROOT = 0;
 
-    protected StringBuilder characters;
+    protected StringBuilder characters = new StringBuilder();
     protected T result;
     protected String rootName;
     protected int state;
@@ -28,15 +28,14 @@ public abstract class FasaxHandler<T> extends DefaultHandler {
 
     @Override
     public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
-        if (isOnRoot && rootName != null) {
-            if (!(qName.equals(rootName))) throw new SAXException("Unexpected root element " + qName + " (expected root " + rootName + ")");
+        if (isOnRoot) {
+            if (rootName != null && !(qName.equals(rootName))) throw new SAXException("Unexpected root element " + qName + " (expected root " + rootName + ")");
             isOnRoot = false;
         }
     }
 
     @Override
     public void characters(char[] ch, int start, int length) throws SAXException {
-        if (characters == null) characters = new StringBuilder();
         characters.append(ch, start, length);
     }
 
