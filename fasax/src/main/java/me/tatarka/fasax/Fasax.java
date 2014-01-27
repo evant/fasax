@@ -26,8 +26,8 @@ import me.tatarka.fasax.internal.FasaxReaderGenerator;
 import me.tatarka.fasax.internal.FasaxWriterGenerator;
 
 public class Fasax {
-    private static final Map<Class<?>, FasaxHandler> SAX_HANDLERS = new LinkedHashMap<Class<?>, FasaxHandler>();
-    private static final Map<Class<?>, AdolpheXmlWriter>  XML_WRITERS = new LinkedHashMap<Class<?>, AdolpheXmlWriter>();
+    private final Map<Class<?>, FasaxHandler> SAX_HANDLERS = new LinkedHashMap<Class<?>, FasaxHandler>();
+    private final Map<Class<?>, AdolpheXmlWriter>  XML_WRITERS = new LinkedHashMap<Class<?>, AdolpheXmlWriter>();
 
     private SAXParserFactory factory;
 
@@ -66,26 +66,26 @@ public class Fasax {
         return handler.getResult();
     }
 
-    public <T> String toXml(T item) throws IOException {
+    private <T> String toXml(T item) throws IOException {
         AdolpheXmlWriter<T> writer = findXmlWriter((Class<T>) item.getClass());
         StringWriter sw = new StringWriter();
         writer.write(item, sw);
         return sw.toString();
     }
 
-    public <T> void toXml(T item, OutputStream os) throws IOException {
+    private <T> void toXml(T item, OutputStream os) throws IOException {
         AdolpheXmlWriter<T> writer = findXmlWriter((Class<T>) item.getClass());
         OutputStreamWriter osw = new OutputStreamWriter(os);
         writer.write(item, osw);
     }
 
-    public <T> void toXml(T item, File file) throws IOException {
+    private <T> void toXml(T item, File file) throws IOException {
         AdolpheXmlWriter<T> writer = findXmlWriter((Class<T>) item.getClass());
         FileWriter fw = new FileWriter(file);
         writer.write(item, fw);
     }
 
-    public <T> void toXml(T item, Writer sw) throws IOException {
+    private <T> void toXml(T item, Writer sw) throws IOException {
         AdolpheXmlWriter<T> writer = findXmlWriter((Class<T>) item.getClass());
         writer.write(item, sw);
     }

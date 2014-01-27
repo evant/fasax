@@ -8,8 +8,7 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.FIELD)
 public @interface ElementList {
-    String entry() default "";
+    String entry();
     String name() default "";
-    Class type() default void.class;
     boolean inline() default false;
 }

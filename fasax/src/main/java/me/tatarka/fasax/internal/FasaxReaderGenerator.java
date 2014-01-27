@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import static com.sun.codemodel.JConditionalFix._if;
@@ -36,26 +35,19 @@ import static com.sun.codemodel.JMod.STATIC;
 
 public final class FasaxReaderGenerator {
     public static final String SUFFIX = "$$SaxParser";
-    private static final String TYPE_CONV_SUFFIX = "TypeConverter";
+    private static final String TYPE_CONV_SUFFIX = "Converter";
 
     private final String classPackage;
     private final String className;
-    private final String rootName;
     private final String parserClassName;
 
-    private final List<Node> elements = new ArrayList<Node>();
-    private final List<Node> attributes = new ArrayList<Node>();
-    private final List<ChildNode> children = new ArrayList<ChildNode>();
-    private final List<ListNode> elementLists = new ArrayList<ListNode>();
-    private final List<ListNode> inlineList = new ArrayList<ListNode>();
-    private final List<ListChildNode> listChildren = new ArrayList<ListChildNode>();
+    private final Nodes nodes = new Nodes();
     private final List<TypeConverter> primitiveTypeConverters = new ArrayList<TypeConverter>();
     private final Map<String, CustomTypeConverter> customTypeConverters = new LinkedHashMap<String, CustomTypeConverter>();
 
-    FasaxReaderGenerator(String classPackage, String className, String rootName) {
+    FasaxReaderGenerator(String classPackage, String className) {
         this.classPackage = classPackage;
         this.className = className;
-        this.rootName = rootName;
 
         parserClassName = getParserClassName(classPackage, className);
 
@@ -68,30 +60,38 @@ public final class FasaxReaderGenerator {
     }
 
     void addElement(String field, String name, String type) {
-        elements.add(new Node(field, name, type));
+        nodes.add(new Node(field, name, type));
     }
 
     void addAttribute(String field, String name, String type) {
-        attributes.add(new Node(field, name, type));
+        nodes.add(new Node.Attribute(field, name, type));
     }
 
-    void addChild(String field, String name, String classPackage, String type) {
-        children.add(new ChildNode(field, name, type, getParserClassName(classPackage, type)));
+    void addText(String field, String type) {
+        nodes.add(new Node.Text(field, type));
+    }
+
+    void addNested(String field, String name, String classPackage, String type) {
+        nodes.add(new Node.Nested(field, name, type, getParserClassName(classPackage, type)));
     }
 
     void addElementList(String field, String name, String entry, String type, String entryType) {
-        elementLists.add(new ListNode(field, name, type, entry, entryType));
+        nodes.add(new Node.List(field, name, type, entry, entryType));
     }
 
     void addInlineList(String field, String name, String entry, String type, String entryType) {
-        inlineList.add(new ListNode(field, name, type, entry, entryType));
+        nodes.add(new Node.InlineList(field, name, type, entry, entryType));
     }
 
-    void addListChild(String field, String name, String entry, String classPackage, String listType, String entryType) {
-        listChildren.add(new ListChildNode(field, name, listType, entry, entryType, getParserClassName(classPackage, entryType)));
+    void addNestedList(String field, String name, String entry, String classPackage, String listType, String entryType) {
+        nodes.add(new Node.NestedList(field, name, listType, entry, entryType, getParserClassName(classPackage, entryType)));
     }
 
-    void addTypeConverter(String field, String type) {
+    void addNestedInlineList(String field, String name, String entry, String classPackage, String listType, String entryType) {
+        nodes.add(new Node.NestedInlineList(field, name, listType, entry, entryType, getParserClassName(classPackage, entryType)));
+    }
+
+    void addConverter(String field, String type) {
         customTypeConverters.put(field, new CustomTypeConverter(field + TYPE_CONV_SUFFIX, type));
     }
 
@@ -112,7 +112,7 @@ public final class FasaxReaderGenerator {
 
             emitStates(clazz);
             emitTypeConverters(clazz, m);
-            emitChildren(clazz, m);
+            emitNested(clazz, m);
             emitStartDocument(clazz, m);
             emitStartElement(clazz, m);
             emitEndElement(clazz);
@@ -125,32 +125,23 @@ public final class FasaxReaderGenerator {
     }
 
     private void emitStates(JDefinedClass clazz) {
-        for (int i = 0; i < children.size(); i++) {
-            clazz.field(PRIVATE | STATIC | FINAL, int.class, children.get(i).staticName()).init(lit(i + 1));
-        }
-
-        for (int i = 0; i < elementLists.size(); i++) {
-            clazz.field(PRIVATE | STATIC | FINAL, int.class, elementLists.get(i).staticName()).init(lit(i + children.size() + 1));
-        }
-
-        for (int i = 0; i < listChildren.size(); i++) {
-            clazz.field(PRIVATE | STATIC | FINAL, int.class, listChildren.get(i).staticName()).init(lit(i + children.size() + elementLists.size() + 1));
+        Nodes requireState = nodes.requiresState();
+        for (int i = 0; i < requireState.size(); i++) {
+            clazz.field(PRIVATE | STATIC | FINAL, int.class, requireState.get(i).staticName()).init(lit(i + 1));
         }
     }
 
     private void emitTypeConverters(JDefinedClass clazz, JCodeModel m) {
         for (CustomTypeConverter t : customTypeConverters.values()) {
-            clazz.field(PRIVATE | FINAL, m.ref(t.type), t.name).init(_new(m.ref(t.type)));
+            JClass type = m.ref(t.type);
+            clazz.field(PRIVATE | FINAL, type, t.name).init(_new(type));
         }
     }
 
-    private void emitChildren(JDefinedClass clazz, JCodeModel m) {
-        for (ChildNode c : children) {
-            clazz.field(PRIVATE | FINAL, m.ref(c.childType), c.field).init(_new(m.ref(c.childType)));
-        }
-
-        for (ListChildNode el : listChildren) {
-            clazz.field(PRIVATE | FINAL, m.ref(el.childType), el.field).init(_new(m.ref(el.childType)));
+    private void emitNested(JDefinedClass clazz, JCodeModel m) {
+        for (Node n : nodes.nested()) {
+            JClass type = m.ref(((Node.IsNested) n).parserClass());
+            clazz.field(PRIVATE | FINAL, type, n.field()).init(_new(type));
         }
     }
 
@@ -160,22 +151,20 @@ public final class FasaxReaderGenerator {
         JBlock body = method.body();
         body.invoke(_super(), "startDocument");
 
-        if (rootName != null && !rootName.isEmpty()) {
-            body.assign(ref("rootName"), lit(rootName));
-        }
-
         body.assign(ref("result"), _new(m.ref(className)));
 
-        for (ListNode el : inlineList) {
-            body.assign(ref("result").ref(el.field), _new(m.ref(el.listType).narrow(m.ref(el.type))));
+        for (Node n : nodes.inlineList()) {
+            body.assign(ref("result").ref(n.field()), _new(n.typeRef(m)));
         }
 
-        for (Node c : children) {
-            body.invoke(ref(c.field), "startDocument");
+        for (Node n : nodes.nested()) {
+            body.invoke(ref(n.field()), "startDocument");
         }
     }
 
     private void emitStartElement(JDefinedClass clazz, JCodeModel m) {
+        // @Override
+        // public void startElement(String uri, String localName, String qName, String attributes) throws SAXException {
         JMethod method = clazz.method(PUBLIC, void.class, "startElement")._throws(SAXException.class);
         method.annotate(Override.class);
         JVar uri = method.param(String.class, "uri");
@@ -183,152 +172,170 @@ public final class FasaxReaderGenerator {
         JVar qName = method.param(String.class, "qName");
         JVar attributes = method.param(Attributes.class, "attributes");
         JBlock body = method.body();
+        // super.startElement(uri, localName, qName, attributes);
         body.invoke(_super(), "startElement").arg(uri).arg(localName).arg(qName).arg(attributes);
 
-        if (children.isEmpty() && elementLists.isEmpty() && listChildren.isEmpty()) {
-            emitAttributes(body, qName, attributes);
-        } else {
-            JConditionalFix _if = null;
-            for (Node c : children) {
-                JExpression test = lit(c.name).invoke("equals").arg(qName);
-                JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then().assign(ref("state"), ref(c.staticName()));
-            }
-            for (ListNode el : elementLists) {
-                JExpression test = lit(el.name).invoke("equals").arg(qName);
-                JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then()
-                        .assign(ref("state"), ref(el.staticName()))
-                        .assign(ref("result").ref(el.field), _new(m.ref(el.listType).narrow(m.ref(el.type))));
-            }
-            for (ListNode el : listChildren) {
-                JExpression test = lit(el.name).invoke("equals").arg(qName);
-                JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then()
-                        .assign(ref("state"), ref(el.staticName()))
-                        .assign(ref("result").ref(el.field), _new(m.ref(el.listType).narrow(m.ref(el.type))));
-            }
-            if (_if != null) body.add(_if);
-
-            if (!(children.isEmpty() && listChildren.isEmpty())) {
-                JSwitch _switch = body._switch(ref("state"));
-                JBlock rootBody = _switch._case(ref("ROOT")).body();
-                emitAttributes(rootBody, qName, attributes);
-                rootBody._break();
-
-                for (Node c : children) {
-                    JBlock _case = _switch._case(ref(c.staticName())).body();
-                    _case.invoke(ref(c.field), "startElement").arg(uri).arg(localName).arg(qName).arg(attributes);
-                    _case._break();
-                }
-
-                for (ListNode el : listChildren) {
-                    JBlock _case = _switch._case(ref(el.staticName())).body();
-                    _case._if(lit(el.entry).invoke("equals").arg(qName))._then()
-                            .invoke(ref(el.field), "startDocument");
-                    _case.invoke(ref(el.field), "startElement").arg(uri).arg(localName).arg(qName).arg(attributes);
-                    _case._break();
-                }
-            }
+        Nodes requireState = nodes.requiresState();
+        if (requireState.isEmpty()) {
+            emitAttributes(body, attributes);
+            return;
         }
+
+        emitStartTests(body, requireState, qName, m);
+
+        Nodes nested = nodes.nested();
+        if (nested.isEmpty()) return;
+
+        emitStartSwitch(body, nested, uri, localName, qName, attributes);
     }
 
-    private void emitAttributes(JBlock body, JVar qName, JVar attributes) {
-        if (!this.attributes.isEmpty()) {
-            JBlock attrBody = body._if(ref("rootName").invoke("equals").arg(qName))._then();
-            for (Node a : this.attributes) {
-                attrBody.assign(
-                        ref("result").ref(a.field),
-                        emitConverter(a, attributes.invoke("getValue").arg(a.name))
+    private void emitAttributes(JBlock body, JVar attributes) {
+        if (!nodes.attributes().isEmpty()) {
+            for (Node a : nodes.attributes()) {
+                body.assign(
+                        ref("result").ref(a.field()),
+                        emitConverter(a, attributes.invoke("getValue").arg(a.name()))
                 );
             }
         }
     }
 
+    private void emitStartTests(JBlock body, Nodes requireState, JVar qName, JCodeModel m) {
+        JConditionalFix _if = null;
+        for (Node n : requireState) {
+            JExpression test = lit(n.testName()).invoke("equals").arg(qName);
+            JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
+            JBlock condBody = cond._then();
+            condBody.assign(ref("state"), ref(n.staticName()));
+
+            if (n.isList() && !((Node.IsList)n).isInline()) {
+                condBody.assign(ref("result").ref(n.field()), _new(n.typeRef(m)));
+            }
+        }
+        if (_if != null) body.add(_if);
+    }
+
+    private void emitStartSwitch(JBlock body, Nodes nested, JVar uri, JVar localName, JVar qName, JVar attributes) {
+        JSwitch _switch = body._switch(ref("state"));
+        JBlock rootBody = _switch._case(ref("ROOT")).body();
+        emitAttributes(rootBody, attributes);
+        rootBody._break();
+
+        for (Node n : nested) {
+            JBlock _case = _switch._case(ref(n.staticName())).body();
+            if (n.isList()) {
+                _case._if(lit(n.elemName()).invoke("equals").arg(qName))._then()
+                        .invoke(ref(n.field()), "startDocument");
+            }
+            _case.invoke(ref(n.field()), "startElement").arg(uri).arg(localName).arg(qName).arg(attributes);
+            _case._break();
+        }
+    }
+
     private void emitEndElement(JDefinedClass clazz) {
+        // @Override
+        // public void endElement(String uri, String localName, String qName) throws SAXException {
         JMethod method = clazz.method(PUBLIC, void.class, "endElement")._throws(SAXException.class);
         method.annotate(Override.class);
         JVar uri = method.param(String.class, "uri");
         JVar localName = method.param(String.class, "localName");
         JVar qName = method.param(String.class, "qName");
         JBlock body = method.body();
+        // super.endElement(uri, localName, qName);
         body.invoke(_super(), "endElement").arg(uri).arg(localName).arg(qName);
 
-        if (children.isEmpty() && elementLists.isEmpty() && listChildren.isEmpty()) {
+        Nodes requiresState = nodes.requiresState();
+        if (requiresState.isEmpty()) {
             emitElements(body, qName);
-            body.invoke(ref("characters"), "setLength").arg(lit(0));
-        } else {
-            JConditionalFix _if = null;
-            for (Node c : children) {
-                JExpression test = lit(c.name).invoke("equals").arg(qName);
-                JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then()
-                        .assign(ref("state"), ref("ROOT"))
-                        .assign(ref("result").ref(c.field), ref(c.field).invoke("getResult"));
-            }
-            for (ListNode el : elementLists) {
-                JExpression test = lit(el.name).invoke("equals").arg(qName);
-                JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then().assign(ref("state"), ref("ROOT"));
-            }
-            for (ListNode el : listChildren) {
-                JExpression test = lit(el.name).invoke("equals").arg(qName);
-                JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-                cond._then().assign(ref("state"), ref("ROOT"));
-            }
-            if (_if != null) body.add(_if);
-
-            JSwitch _switch = body._switch(ref("state"));
-            JBlock rootBody = _switch._case(ref("ROOT")).body();
-            emitElements(rootBody, qName);
-            body.invoke(ref("characters"), "setLength").arg(lit(0));
-            rootBody._break();
-
-            for (Node c : children) {
-                JBlock _case = _switch._case(ref(c.staticName())).body();
-                _case.invoke(ref(c.field), "endElement").arg(uri).arg(localName).arg(qName);
-                _case._break();
-            }
-            for (ListNode el : elementLists) {
-                JBlock _case = _switch._case(ref(el.staticName())).body();
-                _case._if(lit(el.entry).invoke("equals").arg(qName))
-                        ._then().invoke(ref("result").ref(el.field), "add")
-                        .arg(emitConverter(el, ref("characters").invoke("toString")));
-                body.invoke(ref("characters"), "setLength").arg(lit(0));
-                _case._break();
-            }
-            for (ListNode el : listChildren) {
-                JBlock _case = _switch._case(ref(el.staticName())).body();
-                _case.invoke(ref(el.field), "endElement").arg(uri).arg(localName).arg(qName);
-                _case._if(lit(el.entry).invoke("equals").arg(qName))._then()
-                        .invoke(ref("result").ref(el.field), "add").arg(ref(el.field).invoke("getResult"));
-                _case._break();
-            }
-
+            emitClearCharacters(body);
+            return;
         }
+
+        emitEndSwitch(body, requiresState, uri, localName, qName);
+        emitEndTests(body, requiresState, qName);
+        emitClearCharacters(body);
     }
 
     private void emitElements(JBlock body, JVar qName) {
         JConditionalFix _if = null;
-        for (Node e : elements) {
-            JExpression test = lit(e.name).invoke("equals").arg(qName);
+        for (Node n : nodes.onRoot()) {
+            JExpression test = lit(n.elemName()).invoke("equals").arg(qName);
             JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-            cond._then().assign(
-                    ref("result").ref(e.field),
-                    emitConverter(e, ref("characters").invoke("toString"))
-            );
+            JExpression arg = n.isNested() ? ref(n.field()).invoke("getResult")
+                    : emitConverter(n, ref("characters").invoke("toString"));
+            if (n.isList()) {
+                cond._then().invoke(ref("result").ref(n.field()), "add").arg(arg);
+            } else {
+                cond._then().assign(ref("result").ref(n.field()), arg);
+            }
         }
-        for (ListNode el : inlineList) {
-            JExpression test = lit(el.entry).invoke("equals").arg(qName);
+        Node text = nodes.text();
+        if (text != null) {
+            if (_if == null) {
+                emitText(body, text);
+            } else  {
+                emitText(_if._else(), text);
+            }
+        }
+
+        if (_if != null) body.add(_if);
+    }
+
+    private void emitText(JBlock body, Node text) {
+        body.assign(ref("result").ref(text.field()), emitConverter(text, ref("characters").invoke("toString")));
+    }
+
+    private void emitEndSwitch(JBlock body, Nodes requireState, JVar uri, JVar localName, JVar qName) {
+        JSwitch _switch = body._switch(ref("state"));
+        JBlock rootBody = _switch._case(ref("ROOT")).body();
+        emitElements(rootBody, qName);
+        rootBody._break();
+
+        for (Node n : requireState) {
+            JBlock _case = _switch._case(ref(n.staticName())).body();
+            if (n.isNested()) {
+                _case.invoke(ref(n.field()), "endElement").arg(uri).arg(localName).arg(qName);
+            }
+            if (n.isList() && !((Node.IsList) n).isInline()) {
+                JExpression result = n.isNested() ? ref(n.field()).invoke("getResult")
+                                                  : emitConverter(n, ref("characters").invoke("toString"));
+                _case._if(lit(n.elemName()).invoke("equals").arg(qName))
+                        ._then().invoke(ref("result").ref(n.field()), "add").arg(result);
+
+            }
+            _case._break();
+        }
+    }
+
+    private void emitEndTests(JBlock body, Nodes requireState, JVar qName) {
+        JConditionalFix _if = null;
+        for (Node n : requireState) {
+            JExpression test = lit(n.testName()).invoke("equals").arg(qName);
             JConditionalFix cond = _if == null ? _if = _if(test) : _if._elseif(test);
-            cond._then().invoke(ref("result").ref(el.field), "add")
-                    .arg(emitConverter(el, ref("characters").invoke("toString")));
+            JBlock condBody = cond._then();
+            condBody.assign(ref("state"), ref("ROOT"));
+
+            if (n.isNested()) {
+                JExpression result = ref(n.field()).invoke("getResult");
+                if (n.isList()) {
+                    if (((Node.IsList) n).isInline()) {
+                        condBody.invoke(ref("result").ref(n.field()), "add").arg(result);
+                    }
+                } else {
+                    condBody.assign(ref("result").ref(n.field()), result);
+                }
+            }
         }
         if (_if != null) body.add(_if);
     }
 
+    private void emitClearCharacters(JBlock body) {
+        body.invoke(ref("characters"), "setLength").arg(lit(0));
+    }
+
     private void emitCharacters(JDefinedClass clazz) {
-        if (children.isEmpty() && listChildren.isEmpty()) return;
+        Nodes nested = nodes.nested();
+        if (nested.isEmpty()) return;
 
         JMethod method = clazz.method(PUBLIC, void.class, "characters")._throws(SAXException.class);
         method.annotate(Override.class);
@@ -343,22 +350,17 @@ public final class FasaxReaderGenerator {
         rootCase.invoke(_super(), "characters").arg(ch).arg(start).arg(length);
         rootCase._break();
 
-        for (Node c : children) {
-            JBlock _case = _switch._case(ref(c.staticName())).body();
-            _case.invoke(ref(c.field), "characters").arg(ch).arg(start).arg(length);
-            _case._break();
-        }
-        for (ListNode el : listChildren) {
-            JBlock _case = _switch._case(ref(el.staticName())).body();
-            _case.invoke(ref(el.field), "characters").arg(ch).arg(start).arg(length);
+        for (Node n : nested) {
+            JBlock _case = _switch._case(ref(n.staticName())).body();
+            _case.invoke(ref(n.field()), "characters").arg(ch).arg(start).arg(length);
             _case._break();
         }
     }
 
     private JExpression emitConverter(Node e, JExpression expr) {
-        TypeConverter typeConverter = findTypeConverter(e.field, e.type);
+        TypeConverter typeConverter = findTypeConverter(e.field(), e.elemType());
         if (typeConverter == null)
-            throw new RuntimeException("Don't know how to convert \"" + e.field + "\" to type \"" + e.type + "\"");
+            throw new RuntimeException("Don't know how to convert \"" + e.field() + "\" to type \"" + e.elemType() + "\"");
         return typeConverter.emitConverter(expr);
     }
 
@@ -384,51 +386,6 @@ public final class FasaxReaderGenerator {
         return className.substring(packageLen).replace('.', '$') + SUFFIX;
     }
 
-    private static class Node {
-        final String field;
-        final String name;
-        final String type;
-
-        Node(String field, String name, String type) {
-            this.field = field;
-            this.name = name;
-            this.type = type;
-        }
-
-        String staticName() {
-            return name.toUpperCase(Locale.US);
-        }
-    }
-
-    private static class ChildNode extends Node {
-        final String childType;
-
-        ChildNode(String field, String name, String type, String childType) {
-            super(field, name, type);
-            this.childType = childType;
-        }
-    }
-
-    private static class ListNode extends Node {
-        final String entry;
-        final String listType;
-
-        ListNode(String field, String name, String listType, String entry, String entryType) {
-            super(field, name, entryType);
-            this.entry = entry;
-            this.listType = listType;
-        }
-    }
-
-    private static class ListChildNode extends ListNode {
-        final String childType;
-
-        ListChildNode(String field, String name, String listType, String entry, String entryType, String childType) {
-            super(field, name, listType, entry, entryType);
-            this.childType = childType;
-        }
-    }
-
     private interface TypeConverter {
         boolean matches(String type);
 
@@ -451,7 +408,7 @@ public final class FasaxReaderGenerator {
 
         @Override
         public JExpression emitConverter(JExpression expr) {
-            return ref(name).invoke("convert").arg(invoke("toString").arg(expr));
+            return ref(name).invoke("read").arg(invoke("toString").arg(expr));
         }
     }
 

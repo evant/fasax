@@ -9,6 +9,7 @@ import org.junit.runners.JUnit4;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import me.tatarka.fasax.Convert;
 import me.tatarka.fasax.Fasax;
 import me.tatarka.fasax.Attribute;
 import me.tatarka.fasax.Text;
@@ -26,7 +27,6 @@ public class TestText {
     }
 
     @Test
-    @Ignore
     public void testSingle() throws Exception {
         String xml = "<root>text</root>";
         SingleText root = fasax.fromXml(xml, SingleText.class);
@@ -41,11 +41,10 @@ public class TestText {
         SingleText root = fasax.fromXml(xml, SingleText.class);
 
         assertThat(root).isNotNull();
-        assertThat(root.text).isNull();
+        assertThat(root.text).isEmpty();
     }
 
     @Test
-    @Ignore
     public void testWithAttribute() throws Exception {
         String xml = "<root item=\"value\">text</root>";
         SingleTextWithAttribute root = fasax.fromXml(xml, SingleTextWithAttribute.class);
@@ -55,18 +54,35 @@ public class TestText {
         assertThat(root.text).isEqualTo("text");
     }
 
-    @Xml(name = "root")
+    @Test
+    public void testCustomType() throws Exception {
+        String xml = "<root>2014-01-01</root>";
+        CustomTypeText root = fasax.fromXml(xml, CustomTypeText.class);
+        SimpleDateFormat dateParser = new SimpleDateFormat("yyyy-mm-dd");
+
+        assertThat(root).isNotNull();
+        assertThat(root.text).isEqualTo(dateParser.parse("2014-01-01"));
+    }
+
+    @Xml
     public static class SingleText {
         @Text
         public String text;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class SingleTextWithAttribute {
         @Attribute
         public String item;
         @Text
         public String text;
+    }
+
+    @Xml
+    public static class CustomTypeText {
+        @Convert(TestFasax.DateConverter.class)
+        @Text
+        public Date text;
     }
 }
 

@@ -11,10 +11,8 @@ public abstract class FasaxHandler<T> extends DefaultHandler {
 
     protected StringBuilder characters = new StringBuilder();
     protected T result;
-    protected String rootName;
     protected int state;
-
-    private boolean isOnRoot;
+    protected boolean inTag;
 
     public T getResult() {
         return result;
@@ -22,21 +20,24 @@ public abstract class FasaxHandler<T> extends DefaultHandler {
 
     @Override
     public void startDocument() throws SAXException {
-        isOnRoot = true;
         state = ROOT;
     }
 
     @Override
     public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
-        if (isOnRoot) {
-            if (rootName != null && !(qName.equals(rootName))) throw new SAXException("Unexpected root element " + qName + " (expected root " + rootName + ")");
-            isOnRoot = false;
-        }
+        inTag = true;
+    }
+
+    @Override
+    public void endElement(String uri, String localName, String qName) throws SAXException {
+        inTag = false;
     }
 
     @Override
     public void characters(char[] ch, int start, int length) throws SAXException {
-        characters.append(ch, start, length);
+        if (inTag) {
+            characters.append(ch, start, length);
+        }
     }
 
     protected static String toString(String str) {

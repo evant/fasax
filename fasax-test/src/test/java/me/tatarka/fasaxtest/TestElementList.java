@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import me.tatarka.fasax.Convert;
 import me.tatarka.fasax.Element;
 import me.tatarka.fasax.ElementList;
 import me.tatarka.fasax.Fasax;
@@ -174,19 +175,19 @@ public class TestElementList {
         assertThat(root.list.get(1).item).isEqualTo("value2");
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class ConcreteElementList {
         @ElementList(entry = "item")
         public ArrayList<String> list;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class AbstractElementList {
         @ElementList(entry = "item")
         public List<Integer> list;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class DuplicateElementList {
         @Element
         public String item;
@@ -194,7 +195,7 @@ public class TestElementList {
         public List<Integer> list;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class NestedElementList {
         @ElementList(entry = "child")
         public List<NestedElement> list;
@@ -206,25 +207,27 @@ public class TestElementList {
         public String item;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class CustomTypeElementList {
-        @ElementList(entry = "date", type = TestFasax.DateTypeConverter.class)
+        @Convert(TestFasax.DateConverter.class)
+        @ElementList(entry = "date")
         public List<Date> list;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class InlineElementList {
         @ElementList(entry = "item", inline = true)
         public List<String> list;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class InlineCustomTypeElementList {
-        @ElementList(entry = "date", inline = true, type = TestFasax.DateTypeConverter.class)
+        @Convert(TestFasax.DateConverter.class)
+        @ElementList(entry = "date", inline = true)
         public List<Date> list;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class NestedInlineElementList {
         @ElementList(entry = "child", inline = true)
         public List<NestedElement> list;

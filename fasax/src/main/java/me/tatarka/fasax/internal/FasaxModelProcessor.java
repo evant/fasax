@@ -2,10 +2,8 @@ package me.tatarka.fasax.internal;
 
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.io.Writer;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,10 +25,11 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.SimpleTypeVisitor6;
-import javax.tools.JavaFileObject;
 
 import me.tatarka.fasax.Attribute;
+import me.tatarka.fasax.Convert;
 import me.tatarka.fasax.ElementList;
+import me.tatarka.fasax.Text;
 import me.tatarka.fasax.Xml;
 
 import static javax.tools.Diagnostic.Kind.ERROR;
@@ -98,9 +97,8 @@ public final class FasaxModelProcessor extends AbstractProcessor {
         if (saxGenerator == null) {
             String classPackage = getPackageName(element);
             String className = getClassName(element);
-            String rootName = node.name();
 
-            saxGenerator = new FasaxReaderGenerator(classPackage, className, rootName);
+            saxGenerator = new FasaxReaderGenerator(classPackage, className);
             targetClassMap.put(element, saxGenerator);
         }
 
@@ -114,11 +112,13 @@ public final class FasaxModelProcessor extends AbstractProcessor {
         for (VariableElement field : fields) {
             String fieldName = field.getSimpleName().toString();
             String type = field.asType().toString();
+
+            String converter = getConverter(field.getAnnotation(Convert.class));
+
             Attribute attribute = field.getAnnotation(Attribute.class);
             if (attribute != null) {
-                String typeConverter = getType(attribute);
-                if (typeConverter != null) {
-                    saxGenerator.addTypeConverter(fieldName, typeConverter);
+                if (converter != null) {
+                    saxGenerator.addConverter(fieldName, converter);
                 }
                 String name = getName(attribute.name(), fieldName);
                 saxGenerator.addAttribute(fieldName, name, type);
@@ -127,15 +127,22 @@ public final class FasaxModelProcessor extends AbstractProcessor {
             me.tatarka.fasax.Element element = field.getAnnotation(me.tatarka.fasax.Element.class);
             if (element != null) {
                 String name = getName(element.name(), fieldName);
-                String typeConverter = getType(element);
-                if (typeConverter != null) {
-                    saxGenerator.addTypeConverter(fieldName, typeConverter);
+                if (converter != null) {
+                    saxGenerator.addConverter(fieldName, converter);
                     saxGenerator.addElement(fieldName, name, type);
                 } else if (saxGenerator.isPrimitive(type)) {
                     saxGenerator.addElement(fieldName, name, type);
                 } else {
-                    saxGenerator.addChild(fieldName, name, getPackageName(field), type);
+                    saxGenerator.addNested(fieldName, name, getPackageName(field), type);
                 }
+                continue;
+            }
+            Text text = field.getAnnotation(Text.class);
+            if (text != null) {
+                if (converter != null) {
+                    saxGenerator.addConverter(fieldName, converter);
+                }
+                saxGenerator.addText(fieldName, type);
                 continue;
             }
             ElementList elementList = field.getAnnotation(ElementList.class);
@@ -143,10 +150,9 @@ public final class FasaxModelProcessor extends AbstractProcessor {
                 String name = getName(elementList.name(), fieldName);
                 String entry = elementList.entry();
                 boolean inline = elementList.inline();
-                String typeConverter = getType(elementList);
                 CollectionType listType = new CollectionType(field.asType());
-                if (typeConverter != null) {
-                    saxGenerator.addTypeConverter(fieldName, typeConverter);
+                if (converter != null) {
+                    saxGenerator.addConverter(fieldName, converter);
                     if (inline) {
                         saxGenerator.addInlineList(fieldName, name, entry, listType.type, listType.entryType);
                     } else {
@@ -159,7 +165,11 @@ public final class FasaxModelProcessor extends AbstractProcessor {
                         saxGenerator.addElementList(fieldName, name, entry, listType.type, listType.entryType);
                     }
                 } else {
-                    saxGenerator.addListChild(fieldName, name, entry, getPackageName(field), listType.type, listType.entryType);
+                    if (inline) {
+                        saxGenerator.addNestedInlineList(fieldName, name, entry, getPackageName(field), listType.type, listType.entryType);
+                    } else {
+                        saxGenerator.addNestedList(fieldName, name, entry, getPackageName(field), listType.type, listType.entryType);
+                    }
                 }
             }
         }
@@ -187,35 +197,10 @@ public final class FasaxModelProcessor extends AbstractProcessor {
         return result;
     }
 
-    private String getType(me.tatarka.fasax.Element elem) {
+    private String getConverter(Convert convert) {
+        if (convert == null) return null;
         try {
-            elem.type();
-        } catch (MirroredTypeException e) {
-            String type = e.getTypeMirror().toString();
-            if (type == null || type.isEmpty() || type.equals("void")) {
-                return null; //No type set.
-            }
-            return type;
-        }
-        return null; // Won't happen
-    }
-
-    private String getType(Attribute attr) {
-        try {
-            attr.type();
-        } catch (MirroredTypeException e) {
-            String type = e.getTypeMirror().toString();
-            if (type == null || type.isEmpty() || type.equals("void")) {
-                return null; //No type set.
-            }
-            return type;
-        }
-        return null; // Won't happen
-    }
-
-    private String getType(ElementList elems) {
-        try {
-            elems.type();
+            convert.value();
         } catch (MirroredTypeException e) {
             String type = e.getTypeMirror().toString();
             if (type == null || type.isEmpty() || type.equals("void")) {

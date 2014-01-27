@@ -8,7 +8,6 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.TYPE)
 public @interface Xml {
-    String name() default "";
     Mode mode() default Mode.READWRITE;
 
     public static enum Mode {

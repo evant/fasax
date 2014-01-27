@@ -11,9 +11,9 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import me.tatarka.fasax.Converter;
 import me.tatarka.fasax.Fasax;
 import me.tatarka.fasax.Xml;
-import me.tatarka.fasax.TypeConverter;
 
 import static org.fest.assertions.api.Assertions.assertThat;
 
@@ -40,22 +40,16 @@ public class TestFasax {
         fasax.fromXml(xml, Empty.class);
     }
 
-    @Test(expected = SAXException.class)
-    public void testWrongRoot() throws Exception {
-        String xml = "<notroot/>";
-        fasax.fromXml(xml, Empty.class);
-    }
-
-    @Xml(name = "root")
+    @Xml
     public static class Empty {
 
     }
 
-    public static class DateTypeConverter implements TypeConverter<Date> {
+    public static class DateConverter implements Converter<Date> {
         SimpleDateFormat dateParser = new SimpleDateFormat("yyyy-mm-dd");
 
         @Override
-        public Date convert(String item) throws SAXException {
+        public Date read(String item) throws SAXException {
             try {
                 return dateParser.parse(item);
             } catch (ParseException e) {

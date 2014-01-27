@@ -68,7 +68,7 @@ public class TestNestedElements {
         assertThat(root.inner.item).isEqualTo("value");
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class SingleNested {
         @Element
         public Inner inner;

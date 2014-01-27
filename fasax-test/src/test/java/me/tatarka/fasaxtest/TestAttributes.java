@@ -8,6 +8,7 @@ import org.junit.runners.JUnit4;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import me.tatarka.fasax.Convert;
 import me.tatarka.fasax.Fasax;
 import me.tatarka.fasax.Attribute;
 import me.tatarka.fasax.Xml;
@@ -82,19 +83,19 @@ public class TestAttributes {
         assertThat(root.date).isEqualTo(dateParser.parse("2014-01-01"));
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class SingleAttribute {
         @Attribute
         public String item;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class SingleAttributeNamed {
         @Attribute(name = "item")
         public String thing;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class AttributePrimitives {
         @Attribute(name = "boolean")
         public boolean booleanItem;
@@ -108,9 +109,10 @@ public class TestAttributes {
         public char charItem;
     }
 
-    @Xml(name = "root")
+    @Xml
     public static class CustomTypeAttribute {
-        @Attribute(type = TestFasax.DateTypeConverter.class)
+        @Convert(TestFasax.DateConverter.class)
+        @Attribute
         public Date date;
     }
 }

@@ -9,5 +9,4 @@ import java.lang.annotation.Target;
 @Target(ElementType.FIELD)
 public @interface Attribute {
     String name() default "";
-    Class type() default void.class;
 }
