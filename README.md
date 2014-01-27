@@ -8,15 +8,15 @@ documments.
 
 Unlike other implementations, this libary generates SAX parsing code at compile 
 time. This makes it's performace virtually the same as a handwritten SAX parser.
-Annotations are inspired from [http://simple.sourceforge.net/](Simple XML).
+Annotations are inspired from [Simple XML](http://simple.sourceforge.net/).
 
 Example
 -------
 
 ```xml
 <enterprise>
- <corporation>Agile Analitics</corporation>
-  <software-license name="Proprietary" year="2014"/>
+ <corporation>Agile Analytics</corporation>
+  <software-license type="Proprietary" year="2014">Agile Analytics Software Licences™</software-license>
   <software>Cloud Big Data Management</software>
   <software>JVMXMLRPP</software>
   <software>Addition as a Service</software>
@@ -58,10 +58,13 @@ pubic class Enterprise {
     @Xml
     public static class SoftwareLicense {
         @Attribute
-        public String name;
+        public String type;
 
         @Attribute
         public String year;
+
+        @Text
+        public String name;
     }
 
     @Xml
@@ -82,7 +85,7 @@ pubic class Enterprise {
 ```java
 Fasax fasax = new Fasax();
 InputStream in = getXmlInputStream();
-Enterprise = fasax.fromXml(in, Enterprise.class);
+Enterprise enterprise = fasax.fromXml(in, Enterprise.class);
 ```
 
 TODO
@@ -90,3 +93,4 @@ TODO
 - Allow use of setters instead of public fields
 - Write XML
 - Namespaces
+- Split compile-time and runtime dependencies
